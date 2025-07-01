@@ -1,5 +1,9 @@
 # Meu IP Info (WordPress Plugin)
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![WordPress](https://img.shields.io/badge/wordpress-compatible-brightgreen.svg)](https://wordpress.org)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+
 Exibe informações do IP do visitante em tempo real usando [ipinfo.io](https://ipinfo.io/), incluindo mapa de localização.
 
 ## ✨ Funcionalidades
