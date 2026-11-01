@@ -198,6 +198,8 @@ add_action( 'rest_api_init', 'mii_register_rest_route' );
 function mii_shortcode() {
     if ( ! wp_script_is( 'mii-frontend', 'registered' ) ) {
         wp_register_script( 'mii-frontend', plugins_url( 'meu-ip-info.js', __FILE__ ), array(), MII_VERSION, true );
+    }
+    if ( ! wp_style_is( 'mii-frontend', 'registered' ) ) {
         wp_register_style( 'mii-frontend', plugins_url( 'meu-ip-info.css', __FILE__ ), array(), MII_VERSION );
     }
     wp_enqueue_script( 'mii-frontend' );
