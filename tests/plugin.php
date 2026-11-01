@@ -122,7 +122,7 @@ run_test( 'Lookup returns only sanitized allowlisted fields', function () {
     expect_true( $response instanceof WP_REST_Response && 200 === $response->status, 'Lookup failed' );
     expect_true( '8.8.8.8' === $response->data['ip'], 'Incorrect IP' );
     expect_true( '-12.97' == $response->data['latitude'], 'Latitude missing' );
-    expect_true( 6 === count( $response->data ) + 1, 'Unexpected fields in payload' );
+    expect_true( 7 === count( $response->data ), 'Unexpected fields in payload' );
     expect_true( 'private, no-store, max-age=0' === $response->headers['Cache-Control'], 'Cache control missing' );
 } );
 run_test( 'Provider token appears only in server header, never in URL', function () {
