@@ -52,6 +52,7 @@ function is_wp_error( $value ) { return $value instanceof WP_Error; }
 function wp_remote_retrieve_response_code( $response ) { return $response['response']['code']; }
 function wp_remote_retrieve_body( $response ) { return $response['body']; }
 function wp_script_is() { return false; }
+function wp_style_is() { return false; }
 function wp_register_script() {}
 function wp_register_style() {}
 function wp_enqueue_script() {}
