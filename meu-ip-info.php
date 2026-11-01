@@ -1,155 +1,237 @@
 <?php
-/*
-Plugin Name: Meu IP Info
-Description: Exibe informações do IP do visitante e mapa usando ipinfo.io, com estilo moderno. Use o shortcode [meu_ip_info] em páginas ou posts.
-Version: 2.1
-Author: Felipe Silva
-*/
+/**
+ * Plugin Name: Meu IP Info
+ * Description: Exibe informações aproximadas do IP mediante solicitação, sem expor o token ipinfo.io ao navegador.
+ * Version: 2.2.0
+ * Requires PHP: 7.4
+ * Author: Felipe Silva
+ * License: MIT
+ * Text Domain: meu-ip-info
+ */
 
-if (!defined('ABSPATH')) exit;
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
 
-function meu_ip_info_shortcode() {
-    $token = get_option('meu_ip_info_token', '');
-    if (empty($token)) {
-        return '<p><strong>O token da API não está configurado. Configure em Configurações > Meu IP Info.</strong></p>';
+define( 'MII_VERSION', '2.2.0' );
+define( 'MII_OPTION_TOKEN', 'meu_ip_info_token' );
+define( 'MII_CACHE_SECONDS', 600 );
+
+/**
+ * O valor salvo nunca aparece no HTML do visitante ou no campo de senha do admin.
+ * A opção antiga permanece para preservar instalações que já configuraram o token.
+ */
+function mii_sanitize_token( $input ) {
+    $current = (string) get_option( MII_OPTION_TOKEN, '' );
+
+    // A atualização via options.php já foi protegida por nonce e capability pelo WordPress.
+    if ( isset( $_POST['mii_clear_token'] ) && '1' === (string) wp_unslash( $_POST['mii_clear_token'] ) ) {
+        return '';
+    }
+    if ( ! is_string( $input ) || '' === trim( $input ) ) {
+        return $current;
+    }
+    $value = trim( wp_unslash( $input ) );
+    if ( ! preg_match( '/^[A-Za-z0-9_-]{6,200}$/D', $value ) ) {
+        add_settings_error( MII_OPTION_TOKEN, 'mii_invalid_token', 'Token inválido. Mantenha o token anterior.', 'error' );
+        return $current;
+    }
+    return $value;
+}
+
+function mii_register_settings() {
+    register_setting(
+        'meu_ip_info_settings_group',
+        MII_OPTION_TOKEN,
+        array(
+            'type'              => 'string',
+            'sanitize_callback' => 'mii_sanitize_token',
+            'default'           => '',
+        )
+    );
+}
+add_action( 'admin_init', 'mii_register_settings' );
+
+function mii_add_settings_menu() {
+    add_options_page( 'Meu IP Info', 'Meu IP Info', 'manage_options', 'meu-ip-info', 'mii_render_settings' );
+}
+add_action( 'admin_menu', 'mii_add_settings_menu' );
+
+function mii_render_settings() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html( 'Você não tem permissão para acessar esta página.' ) );
+    }
+    $configured = '' !== (string) get_option( MII_OPTION_TOKEN, '' );
+    ?>
+    <div class="wrap">
+      <h1>Meu IP Info — Configurações</h1>
+      <p>O token é utilizado apenas pelo servidor e nunca é enviado ao navegador.</p>
+      <p><strong>Estado:</strong> <?php echo esc_html( $configured ? 'Token configurado' : 'Token não configurado' ); ?></p>
+      <form method="post" action="options.php">
+        <?php settings_fields( 'meu_ip_info_settings_group' ); ?>
+        <table class="form-table" role="presentation">
+          <tr>
+            <th scope="row"><label for="mii-token">Token do ipinfo.io</label></th>
+            <td>
+              <input id="mii-token" type="password" name="<?php echo esc_attr( MII_OPTION_TOKEN ); ?>"
+                value="" autocomplete="new-password" size="48" />
+              <p class="description">Deixe em branco para manter o token salvo. Nunca exiba o segredo no código da página.</p>
+            </td>
+          </tr>
+          <tr><th scope="row">Remover token</th><td>
+            <label><input type="checkbox" name="mii_clear_token" value="1" /> Remover a configuração atual</label>
+          </td></tr>
+        </table>
+        <?php submit_button(); ?>
+      </form>
+    </div>
+    <?php
+}
+
+/** O proxy não confia em X-Forwarded-For ou outros cabeçalhos enviados pelo visitante. */
+function mii_visitor_ip() {
+    $ip = isset( $_SERVER['REMOTE_ADDR'] ) ? (string) $_SERVER['REMOTE_ADDR'] : '';
+    if ( false === filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) ) {
+        return '';
+    }
+    return $ip;
+}
+
+/** Apenas campos conhecidos são retornados; resposta upstream nunca é repassada integralmente. */
+function mii_normalize_info( $data, $visitor_ip ) {
+    if ( ! is_array( $data ) || ! is_string( $visitor_ip ) ) {
+        return null;
+    }
+    $fields = array( 'org', 'country', 'region', 'city' );
+    $result = array( 'ip' => $visitor_ip );
+    foreach ( $fields as $field ) {
+        $result[ $field ] = isset( $data[ $field ] ) && is_string( $data[ $field ] )
+            ? substr( sanitize_text_field( $data[ $field ] ), 0, 160 )
+            : '';
+    }
+    $result['latitude']  = null;
+    $result['longitude'] = null;
+    if ( isset( $data['loc'] ) && is_string( $data['loc'] ) ) {
+        $coords = explode( ',', $data['loc'] );
+        if ( 2 === count( $coords ) && is_numeric( trim( $coords[0] ) ) && is_numeric( trim( $coords[1] ) ) ) {
+            $latitude = (float) trim( $coords[0] );
+            $longitude = (float) trim( $coords[1] );
+            if ( is_finite( $latitude ) && is_finite( $longitude ) &&
+                $latitude >= -90 && $latitude <= 90 && $longitude >= -180 && $longitude <= 180 ) {
+                $result['latitude'] = $latitude;
+                $result['longitude'] = $longitude;
+            }
+        }
+    }
+    return $result;
+}
+
+function mii_rest_lookup() {
+    $token = (string) get_option( MII_OPTION_TOKEN, '' );
+    if ( '' === $token ) {
+        return new WP_Error( 'mii_unavailable', 'Consulta temporariamente indisponível.', array( 'status' => 503 ) );
+    }
+    $ip = mii_visitor_ip();
+    if ( '' === $ip ) {
+        return new WP_Error( 'mii_no_ip', 'Endereço IP público não identificado. Redes locais não são consultadas.', array( 'status' => 422 ) );
     }
 
+    // Hash com chave do WordPress: a chave de cache não revela IP em texto claro.
+    $key = 'mii_' . substr( hash_hmac( 'sha256', $ip, wp_salt( 'auth' ) ), 0, 48 );
+    $cached = get_transient( $key );
+    if ( is_array( $cached ) ) {
+        $response = new WP_REST_Response( $cached, 200 );
+        $response->header( 'Cache-Control', 'private, no-store, max-age=0' );
+        return $response;
+    }
+
+    // O visitante só pode consultar o próprio endereço; nunca aceita IP em parâmetro.
+    // URL fixa de provedor, sem redirecionamento; segredo apenas no cabeçalho HTTP.
+    $url = 'https://ipinfo.io/' . rawurlencode( $ip ) . '/json';
+    $upstream = wp_safe_remote_get(
+        $url,
+        array(
+            'timeout'             => 6,
+            'redirection'         => 0,
+            'sslverify'           => true,
+            'limit_response_size' => 8192,
+            'headers'             => array(
+                'Accept'        => 'application/json',
+                'Authorization' => 'Bearer ' . $token,
+            ),
+        )
+    );
+
+    if ( is_wp_error( $upstream ) || 200 !== (int) wp_remote_retrieve_response_code( $upstream ) ) {
+        return new WP_Error( 'mii_provider_error', 'Não foi possível consultar o serviço de IP.', array( 'status' => 502 ) );
+    }
+    $body = wp_remote_retrieve_body( $upstream );
+    if ( ! is_string( $body ) || strlen( $body ) > 8192 ) {
+        return new WP_Error( 'mii_invalid_response', 'Resposta inválida do serviço.', array( 'status' => 502 ) );
+    }
+    $data = json_decode( $body, true );
+    $info = mii_normalize_info( $data, $ip );
+    if ( null === $info ) {
+        return new WP_Error( 'mii_invalid_response', 'Resposta inválida do serviço.', array( 'status' => 502 ) );
+    }
+    // O cache é transitório (10 min) para reduzir consultas e o uso da cota.
+    set_transient( $key, $info, MII_CACHE_SECONDS );
+    $response = new WP_REST_Response( $info, 200 );
+    $response->header( 'Cache-Control', 'private, no-store, max-age=0' );
+    return $response;
+}
+
+function mii_register_rest_route() {
+    register_rest_route(
+        'meu-ip-info/v1',
+        '/lookup',
+        array(
+            'methods'             => 'GET',
+            'callback'            => 'mii_rest_lookup',
+            // Endpoint público; IP é obtido somente da conexão do próprio visitante.
+            'permission_callback' => '__return_true',
+        )
+    );
+}
+add_action( 'rest_api_init', 'mii_register_rest_route' );
+
+function mii_shortcode() {
+    if ( ! wp_script_is( 'mii-frontend', 'registered' ) ) {
+        wp_register_script( 'mii-frontend', plugins_url( 'meu-ip-info.js', __FILE__ ), array(), MII_VERSION, true );
+    }
+    if ( ! wp_style_is( 'mii-frontend', 'registered' ) ) {
+        wp_register_style( 'mii-frontend', plugins_url( 'meu-ip-info.css', __FILE__ ), array(), MII_VERSION );
+    }
+    wp_enqueue_script( 'mii-frontend' );
+    wp_enqueue_style( 'mii-frontend' );
+
+    $id = wp_unique_id( 'mii-' );
+    $rest_url = rest_url( 'meu-ip-info/v1/lookup' );
     ob_start();
     ?>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
-    <style>
-    #ip-info {
-        max-width: 500px;
-        margin: 20px auto;
-        padding: 25px;
-        background: rgba(255, 255, 255, 0.7);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        border-radius: 20px;
-        box-shadow: 0 8px 30px rgba(0,0,0,0.1);
-        font-family: 'Poppins', sans-serif;
-        text-align: center;
-        opacity: 0;
-        transform: translateY(20px);
-        transition: all 0.6s ease;
-    }
-
-    #ip-info.loaded {
-        opacity: 1;
-        transform: translateY(0);
-    }
-
-    #ip-info p {
-        margin: 12px 0;
-        font-size: 18px;
-    }
-
-    #ip-info p span {
-        font-weight: 600;
-        color: #2b67f6;
-    }
-
-    #map {
-        border-radius: 15px;
-        overflow: hidden;
-        margin-top: 20px;
-    }
-
-    .ip-title {
-        text-align: center;
-        font-size: 30px;
-        color: #2b67f6;
-        margin-top: 30px;
-        margin-bottom: 10px;
-        font-weight: 600;
-        font-family: 'Poppins', sans-serif;
-    }
-
-    .ip-subtitle {
-        text-align: center;
-        margin-top: 8px;
-        color: #555;
-        font-size: 15px;
-        font-family: 'Poppins', sans-serif;
-    }
-
-    .copy-btn {
-        margin-top: 12px;
-        padding: 8px 16px;
-        background-color: #2b67f6;
-        color: #fff;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 14px;
-    }
-
-    .copy-btn:hover {
-        background-color: #244fbe;
-    }
-    </style>
-    <h2 class="ip-title">Confira suas informações de IP</h2>
-    <div id="ip-info">
-        <p><i class="fas fa-globe"></i> <strong>IP:</strong> <span id="ip"></span></p>
-        <p><i class="fas fa-building"></i> <strong>Provedor:</strong> <span id="org"></span></p>
-        <p><i class="fas fa-flag"></i> <strong>País:</strong> <span id="country"></span></p>
-        <p><i class="fas fa-map-marker-alt"></i> <strong>Estado:</strong> <span id="region"></span></p>
-        <p><i class="fas fa-city"></i> <strong>Cidade:</strong> <span id="city"></span></p>
-        <button class="copy-btn" onclick="copyIp()">Copiar IP</button>
-    </div>
-    <div id="map" style="height: 400px; margin-top: 20px;"></div>
-    <p class="ip-subtitle">Seus dados são obtidos apenas para exibição e não são armazenados.</p>
-    <script>
-        var meuIpInfoToken = "<?php echo esc_js($token); ?>";
-
-        function copyIp() {
-            const ip = document.getElementById("ip").textContent;
-            navigator.clipboard.writeText(ip).then(() => {
-                alert("IP copiado!");
-            });
-        }
-    </script>
+    <section id="<?php echo esc_attr( $id ); ?>" class="mii-widget"
+        data-lookup-url="<?php echo esc_url( $rest_url ); ?>"
+        aria-label="Consulta de informações aproximadas do IP">
+      <h2 class="mii-title">Confira suas informações de IP</h2>
+      <p class="mii-disclosure">Ao selecionar “Consultar meu IP”, seu endereço público será enviado pelo
+        servidor deste site ao ipinfo.io para identificar localização aproximada e provedor.
+        O resultado é mantido em cache temporário por até 10 minutos; o plugin não mantém histórico.
+        O mapa utiliza OpenStreetMap somente após sua confirmação.</p>
+      <button type="button" class="mii-button mii-lookup">Consultar meu IP</button>
+      <p class="mii-status" role="status" aria-live="polite"></p>
+      <dl class="mii-details" hidden>
+        <div><dt>Endereço IP</dt><dd data-field="ip"></dd></div>
+        <div><dt>Provedor</dt><dd data-field="org"></dd></div>
+        <div><dt>País</dt><dd data-field="country"></dd></div>
+        <div><dt>Estado</dt><dd data-field="region"></dd></div>
+        <div><dt>Cidade</dt><dd data-field="city"></dd></div>
+      </dl>
+      <button type="button" class="mii-button mii-copy" hidden>Copiar IP</button>
+      <button type="button" class="mii-button mii-map" hidden>Carregar mapa aproximado (OpenStreetMap)</button>
+      <div class="mii-map-container" hidden></div>
+      <p class="mii-note">A geolocalização por IP é estimada e não representa sua localização exata.</p>
+    </section>
     <?php
     return ob_get_clean();
 }
-add_shortcode('meu_ip_info', 'meu_ip_info_shortcode');
-
-function meu_ip_info_enqueue_scripts() {
-    wp_enqueue_style('leaflet-css', 'https://unpkg.com/leaflet/dist/leaflet.css');
-    wp_enqueue_script('leaflet-js', 'https://unpkg.com/leaflet/dist/leaflet.js', array(), null, true);
-    wp_enqueue_script('meu-ip-info-script', plugins_url('/meu-ip-info.js', __FILE__), array('leaflet-js'), null, true);
-    wp_enqueue_script('fontawesome', 'https://kit.fontawesome.com/a2e8c50f08.js');
-}
-add_action('wp_enqueue_scripts', 'meu_ip_info_enqueue_scripts');
-
-function meu_ip_info_menu() {
-    add_options_page('Meu IP Info', 'Meu IP Info', 'manage_options', 'meu-ip-info', 'meu_ip_info_settings_page');
-}
-add_action('admin_menu', 'meu_ip_info_menu');
-
-function meu_ip_info_settings_page() {
-    ?>
-    <div class="wrap">
-        <h1>Configuração - Meu IP Info</h1>
-        <form method="post" action="options.php">
-            <?php
-                settings_fields('meu_ip_info_settings_group');
-                do_settings_sections('meu_ip_info_settings_group');
-            ?>
-            <table class="form-table">
-                <tr valign="top">
-                    <th scope="row">Token do ipinfo.io</th>
-                    <td><input type="text" name="meu_ip_info_token" value="<?php echo esc_attr(get_option('meu_ip_info_token')); ?>" size="50"/></td>
-                </tr>
-            </table>
-            <?php submit_button(); ?>
-        </form>
-    </div>
-    <?php
-}
-
-function meu_ip_info_register_settings() {
-    register_setting('meu_ip_info_settings_group', 'meu_ip_info_token');
-}
-add_action('admin_init', 'meu_ip_info_register_settings');
-?>
+add_shortcode( 'meu_ip_info', 'mii_shortcode' );

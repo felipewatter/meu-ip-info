@@ -1,0 +1,56 @@
+.mii-widget {
+  box-sizing: border-box;
+  max-width: 580px;
+  margin: 1.5rem auto;
+  padding: clamp(1rem, 3vw, 1.8rem);
+  border-radius: 18px;
+  border: 1px solid #dbe5f1;
+  background: linear-gradient(135deg, #f5f9ff, #fff);
+  box-shadow: 0 8px 30px rgba(18, 55, 100, .08);
+  color: #233348;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.6;
+}
+.mii-widget *, .mii-widget *::before, .mii-widget *::after { box-sizing: border-box; }
+.mii-widget .mii-title { margin: 0 0 .5rem; font-size: clamp(1.4rem, 3vw, 1.8rem); color: #1c4c99; }
+.mii-widget .mii-disclosure { margin: 0 0 1rem; font-size: .92rem; }
+.mii-widget .mii-note { font-size: .85rem; color: #475569; margin: 1rem 0 0; }
+.mii-widget .mii-button {
+  display: inline-block;
+  max-width: 100%;
+  margin: .35rem .4rem .35rem 0;
+  border-radius: 10px;
+  border: 1px solid #1e50aa;
+  padding: .62rem 1rem;
+  background: #205db6;
+  color: white;
+  text-align: center;
+  font: inherit;
+  font-size: .96rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mii-widget .mii-button:hover, .mii-widget .mii-button:focus-visible { background: #174786; }
+.mii-widget .mii-button:focus-visible { outline: 3px solid #0c365f; outline-offset: 2px; }
+.mii-widget .mii-button:disabled { opacity: .6; cursor: wait; }
+.mii-widget .mii-status { min-height: 1.6rem; margin: .5rem 0; font-size: .92rem; }
+.mii-widget .mii-details { margin: .8rem 0; }
+.mii-widget .mii-details > div {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: .55rem .1rem;
+  border-bottom: 1px solid #e1eaf4;
+}
+.mii-widget dt { font-weight: 700; color: #243e66; }
+.mii-widget dd { margin: 0; text-align: right; overflow-wrap: anywhere; max-width: 65%; }
+.mii-widget .mii-map-container { margin-top: 1rem; border-radius: 12px; overflow: hidden; }
+.mii-widget .mii-map-container iframe { display: block; width: 100%; border: 0; }
+.mii-widget [hidden] { display: none !important; }
+@media (max-width: 420px) {
+  .mii-widget .mii-details > div { display: block; }
+  .mii-widget dd { max-width: 100%; text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mii-widget * { scroll-behavior: auto; transition: none !important; }
+}
