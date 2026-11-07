@@ -1,0 +1,52 @@
+name: Publish v2.2.1 after validated CI
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: meu-ip-info-v2.2.1
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: >-
+      github.repository == 'felipewatter/meu-ip-info' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Package verified WordPress plugin and publish GitHub assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TESTED_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$TESTED_SHA"
+          grep -Fq ' * Version: 2.2.1' meu-ip-info.php
+          grep -Fq "MII_VERSION', '2.2.1'" meu-ip-info.php
+          if gh release view v2.2.1 --repo "$GH_REPO" >/dev/null 2>&1; then exit 0; fi
+          if git ls-remote --tags origin refs/tags/v2.2.1 | grep -q .; then echo 'Existing tag must never be reused'; exit 1; fi
+          mkdir -p release-assets
+          git archive --format=zip --prefix=meu-ip-info/ \
+            -o release-assets/meu-ip-info-v2.2.1.zip HEAD \
+            meu-ip-info.php meu-ip-info.js meu-ip-info.css README.md LICENSE
+          unzip -t release-assets/meu-ip-info-v2.2.1.zip >/dev/null
+          (cd release-assets && sha256sum *.zip > SHA256SUMS)
+          { echo '# meu-ip-info v2.2.1'; echo; echo 'Changes since v2.2.0:'; git log --format='- %s (%h)' v2.2.0..HEAD; } > release-notes.txt
+          gh release create v2.2.1 release-assets/* --repo "$GH_REPO" --target "$TESTED_SHA" \
+            --title 'Meu IP Info v2.2.1' --notes-file release-notes.txt --latest

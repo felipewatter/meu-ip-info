@@ -5,7 +5,7 @@
 
 Plugin WordPress em português que permite ao visitante consultar seu **IP público**, provedor e localização **aproximada**, utilizando a API ipinfo.io. Inclui um mapa incorporado do OpenStreetMap que é carregado **somente após autorização adicional**.
 
-## Segurança e privacidade — versão 2.2.0
+## Segurança e privacidade — versão 2.2.1
 
 **O token ipinfo.io não é exposto ao visitante.** O WordPress realiza a consulta no servidor, em URL fixa, usando header Authorization. A página não contém esse token em HTML nem JavaScript, mesmo com o código-fonte aberto.
 
@@ -23,7 +23,7 @@ A consulta é opcional: o visitante clica **Consultar meu IP**; a localização 
 4. Insira o shortcode `[meu_ip_info]` em páginas ou posts, inclusive múltiplas vezes.
 5. Confira o fluxo completo como visitante. Em uma instância com proxy reverso, certifique-se de que REMOTE_ADDR representa o IP público real do visitante, configurado **somente** em proxy confiável.
 
-A versão do cabeçalho WordPress passa de **2.1** para **2.2.0**. A última release histórica no GitHub era **v1.0.0**; a versão de plugin e a tag GitHub não estavam sincronizadas.
+A versão atual do cabeçalho WordPress é **2.2.1**, sincronizada à tag `v2.2.1` e à release oficial. A evolução histórica das versões anteriores está documentada no changelog.
 
 ## Funcionalidades
 
