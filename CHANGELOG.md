@@ -1,5 +1,11 @@
 # Histórico de alterações
 
+## 2.2.1 — 2026-11-07
+
+- Sincronização da versão do plugin com a tag e o pacote ZIP da release GitHub.
+- Incorporação de atualizações de manutenção nos workflows sem modificar o comportamento ou a política de privacidade.
+- Distribuição do ZIP pronto para WordPress com checksum SHA-256.
+
 ## 2.2.0 — 2026-10-31
 
 - Removida a exposição do token ipinfo.io em JavaScript e HTML público.

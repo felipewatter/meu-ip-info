@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Meu IP Info
  * Description: Exibe informações aproximadas do IP mediante solicitação, sem expor o token ipinfo.io ao navegador.
- * Version: 2.2.0
+ * Version: 2.2.1
  * Requires PHP: 7.4
  * Author: Felipe Silva
  * License: MIT
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'MII_VERSION', '2.2.0' );
+define( 'MII_VERSION', '2.2.1' );
 define( 'MII_OPTION_TOKEN', 'meu_ip_info_token' );
 define( 'MII_CACHE_SECONDS', 600 );
 
